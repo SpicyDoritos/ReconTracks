@@ -68,11 +68,12 @@ The **Playlist Manager** expands ReconTracks with playlist-saving functionality 
 
 ## 🖥 UI Example (via ReaImGui)
 
+![Main Recontrack UI](https://i.imgur.com/Nb4lNPy.jpeg)
 - Tabbed interface: Song Browser / Queue View
 - Search & filter functionality
 - Double-click to add songs to queue
 - Load queue directly to timeline
-
+![playlist](https://i.imgur.com/9h8rUzC.jpeg)
 ---
 
 ## ⚙️ Installation
