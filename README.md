@@ -84,7 +84,7 @@ The **Playlist Manager** expands ReconTracks with playlist-saving functionality 
     - Open the Actions List (`?`)
     - Click “New Action” then ”Load ReaScript” to import `ReconTracks.lua`
     - Assign shortcuts or add it to a toolbar for quick access.
-    - **Note:** You do not need to import or assign a hotkey for `Recontracks-Playlist.lua` — it can be accessed via the **Queue** tab inside ReconTracks.
+    - **Note:** You do not need to import or assign a hotkey for `Recontracks-Playlist.lua` — it can be accessed via the **Queue** tab inside ReconTracks so long as the file is in the reaper scripts folder.
 4. (Optional) Edit the default folder path in the script if needed.
 
 ---
