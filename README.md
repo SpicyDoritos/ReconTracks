@@ -79,12 +79,12 @@ The **Playlist Manager** expands ReconTracks with playlist-saving functionality 
 ## ⚙️ Installation
 
 1. Make sure REAPER has the [ReaImGui](https://github.com/cfillion/reaimgui) extension installed (via [ReaPack](https://reapack.com/)).
-2. Copy `ReconTracks.lua` and `ReconTracks Playlist Manager.lua` into your REAPER Scripts folder.
+2. Copy `ReconTracks.lua` and `Recontracks-Playlist.lua` into your REAPER Scripts folder.
 3. In REAPER:
     - Open the Actions List (`?`)
     - Click “New Action” then ”Load ReaScript” to import `ReconTracks.lua`
     - Assign shortcuts or add it to a toolbar for quick access.
-    - **Note:** You do not need to import or assign a hotkey for `ReconTracks Playlist Manager.lua` — it can be accessed via the **Queue** tab inside ReconTracks.
+    - **Note:** You do not need to import or assign a hotkey for `Recontracks-Playlist.lua` — it can be accessed via the **Queue** tab inside ReconTracks.
 4. (Optional) Edit the default folder path in the script if needed.
 
 ---
