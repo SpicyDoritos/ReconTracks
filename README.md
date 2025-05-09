@@ -48,6 +48,25 @@ This turned every performance into a guessing game. I’d find myself constantly
 This gives me consistent monitoring, better control, and way less guesswork and now with reapers video support you can use mp4 videos as well! I eventually want to add real-time normalization, but for now, this approach works beautifully — and I wanted to share it for others in the same boat.
 
 ---
+## 🎵 ReconTracks (Main App)
+
+The **ReconTracks** script is your all-in-one backing track control center inside REAPER — ideal for streamers, performers, or practice sessions. It gives you a dedicated space to load, queue, and control your tracks right inside your REAPER project.
+
+### ⚙️ Features & Actions:
+
+- **Browse Folder**: Choose your default backing track folder to load songs from.
+- **Browser Tab**: View and search available tracks from your folder.
+- **Queue Tab**: Arrange a sequence of songs for practice or performance.
+- **Add to Queue**: Quickly queue up selected tracks in the order you want.
+- **Load Track**: Instantly load a selected song into your REAPER session.
+- **Process Queue**: Load and arrange all queued tracks on the timeline in sequence.
+- **Clear Queue**: Empty your queue and start fresh.
+- **Persistent Memory**: Remembers your last folder and queue between sessions.
+- **Debug Console (optional)**: View detailed logs for troubleshooting or dev use.
+
+> Requires: REAPER 6.8+ and ReaImGui (via ReaPack)
+
+---
 
 ## 📂 Playlist Manager (Companion Script)
 
