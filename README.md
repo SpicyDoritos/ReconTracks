@@ -60,10 +60,11 @@ ReconTracks brings backing tracks directly into REAPER, so you can balance guita
 ### ReconTracks JSON Converter
 Convert your `song_genres.json` into a CSV for use with services like StreamerSongList:
 
-1. Upload your `song_genres.json` file from `C:\Users\<YourName>\AppData\Roaming\REAPER\Scripts\ReconTracks`
-2. The converter extracts Artist, Song Name, and Genre from each entry
-3. Review the parsed data in a table
-4. Download the CSV and import it into your song request service
+1. Load ReconTracks Json Convertor with your favorite browser
+2. Upload your `song_genres.json` file from `C:\Users\<YourName>\AppData\Roaming\REAPER\Scripts\ReconTracks`
+3. The converter extracts Artist, Song Name, and Genre from each entry
+4. Review the parsed data in a table
+5. Download the CSV and import it into your song request service
 
 ---
 
