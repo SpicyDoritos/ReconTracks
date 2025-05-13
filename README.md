@@ -70,13 +70,16 @@ Convert your `song_genres.json` into a CSV for use with services like StreamerSo
 
 ## 🖥️ UI Examples
 
-![Main Recontrack UI](https://i.imgur.com/Nb4lNPy.jpeg)
-*ReconTracks main interface with tabbed browser/queue view*
+![Main Recontrack UI](https://i.imgur.com/b6C7joc.jpeg)
 
-![Playlist Manager](https://i.imgur.com/9h8rUzC.jpeg)
+*ReconTracks main interface*
+
+![Playlist Manager](https://i.imgur.com/fnzXogR.jpeg)
+
 *Playlist management interface*
 
 ![Playlist Manager](https://i.imgur.com/tBPjkIt.png)
+
 *Random Player interface*
 
 ---
