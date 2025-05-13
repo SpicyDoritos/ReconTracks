@@ -32,6 +32,7 @@ ReconTracks brings backing tracks directly into REAPER, so you can balance guita
 - **UI Integration**: Tabbed interface with Song Browser and Queue View
 - **Search & Filter**: Quickly find tracks in your library
 - **Smart Behavior**: Remembers last loaded track and settings
+- **video quick search**: One-click button to search for the current loaded song's official video on YouTube
 
 ### 🏷️ Genre Tagging System
 - Tag each track with **Artist Name**, **Song Title**, and **Genre**
@@ -59,6 +60,9 @@ ReconTracks brings backing tracks directly into REAPER, so you can balance guita
 
 ![Playlist Manager](https://i.imgur.com/9h8rUzC.jpeg)
 *Playlist management interface*
+
+![Playlist Manager](https://i.imgur.com/tBPjkIt.png)
+*Random Player interface*
 
 ---
 
