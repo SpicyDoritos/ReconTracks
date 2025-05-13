@@ -35,8 +35,10 @@ ReconTracks brings backing tracks directly into REAPER, so you can balance guita
 - **video quick search**: One-click button to search for the current loaded song's official video on YouTube
 
 ### 🏷️ Genre Tagging System
-- Tag each track with **Artist Name**, **Song Title**, and **Genre**
+- Uses naming format `Artist Name – Song Title` for consistent tagging with this system
+- Tag each track with a **Genre**
 - Automatically saves metadata to `song_genres.json`
+- the meta will include **song directory ** **Artist Name**, **Song Title**, and **Genre**
 - Filter tracks by genre for random selection or setlists
 - Export metadata to CSV for other platforms
 
@@ -50,6 +52,18 @@ ReconTracks brings backing tracks directly into REAPER, so you can balance guita
 - Randomly load tracks by genre
 - Choose to load by number of tracks or total duration
 - Perfect for spontaneous jam sessions or setlist variety
+
+---
+
+## 📁 Additional Tools
+
+### ReconTracks JSON Converter
+Convert your `song_genres.json` into a CSV for use with services like StreamerSongList:
+
+1. Upload your `song_genres.json` file from `C:\Users\<YourName>\AppData\Roaming\REAPER\Scripts\ReconTracks`
+2. The converter extracts Artist, Song Name, and Genre from each entry
+3. Review the parsed data in a table
+4. Download the CSV and import it into your song request service
 
 ---
 
@@ -79,17 +93,6 @@ ReconTracks brings backing tracks directly into REAPER, so you can balance guita
 
 ---
 
-## 📁 Additional Tools
-
-### ReconTracks JSON Converter
-Convert your `song_genres.json` into a CSV for use with services like StreamerSongList:
-
-1. Upload your `song_genres.json` file from `C:\Users\<YourName>\AppData\Roaming\REAPER\Scripts\ReconTracks`
-2. The converter extracts Artist, Song Name, and Genre from each entry
-3. Review the parsed data in a table
-4. Download the CSV and import it into your song request service
-
----
 
 ## 🧠 Technical Notes
 
