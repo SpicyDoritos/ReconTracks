@@ -89,7 +89,7 @@ Convert your `song_genres.json` into a CSV for use with services like StreamerSo
    - Open the Actions List (`?`)
    - Click "New Action" then "Load ReaScript" to import `ReconTracks.lua`
    - Assign shortcuts or add it to a toolbar for quick access
-   - **Note:** You don't need to import `Recontracks-Playlist.lua` or `ReconTracks-RandomLoader.lua` separately—it can be accessed via the **Queue** tab inside ReconTracks
+   - **Note:** You don't need to import `Recontracks-Playlist.lua` or `ReconTracks-RandomLoader.lua` separately—it can be accessed via the **buttons** inside of ReconTracks
 4. (Optional) Edit the default folder path in the script if needed
 
 ---
