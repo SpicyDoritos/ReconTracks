@@ -1,6 +1,6 @@
 # 🎸 ReconTracks for REAPER
 
-**ReconTracks** is a REAPER extension designed to streamline loading, organizing, and playing backing tracks for live performance, practice, or studio sessions. Developed with musicians in mind, it features a sleek UI, persistent folder memory, and playlist management.
+**ReconTracks**  ReconTracks is a REAPER Lua script designed to streamline loading, organizing, and playing backing tracks for practice or live streaming—all within one app for simplified monitoring and playback. Once installed Just point it to your backing track folder and away you go!
 
 > Current Version: 2.2  
 > Author: Recontastic  
