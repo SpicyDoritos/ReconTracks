@@ -24,6 +24,7 @@ ReconTracks brings backing tracks directly into REAPER, so you can balance guita
 
 ### 🔊 Main App – ReconTracks
 - **Enhanced Track Loader**: Quickly browse and load audio files into a dedicated "ReconTracks" track
+- **Caching System**:  Speeds up future loads by saving a JSON cache of songs in /Scripts/ReconTracks/song_cache.json
 - **Persistent Folder Memory**: Remembers your preferred song folder
 - **Queue System**: Build and preview a queue of songs to load in order
 - **Flexible Insertion**: Append or replace current tracks with one click

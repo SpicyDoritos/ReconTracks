@@ -1,11 +1,14 @@
--- ReconTracks - Enhanced Backing Track Loader for Recontastic
--- Version 2.1
+-- ReconTracks - Enhanced Backing Track Loader  for Reaper
+-- Version 2.2
 
 -- SETTINGS
 local defaultSongFolder = "C:\\Users\\recontastic\\Desktop\\backtracks" -- <- fallback directory with proper backslashes
 local isConsoleVisible = false -- Set to false to hide console output by default
-local scriptVersion = "2.1"
+local scriptVersion = "2.2"
 local lastLoadedSong = nil
+
+local useSongCache = true -- Enable/disable song caching
+local songCacheFilePath = reaper.GetResourcePath() .. "\\Scripts\\ReconTracks\\song_cache.json"
 
 -- Global variables for genre management
 local genreTags = {"Rock", "Metal", "Country", "Funk", "Soul", "Classic Rock", "Custom..."} -- Preset genres
@@ -13,6 +16,11 @@ local songGenres = {} -- Will store song path -> genre mapping
 local customGenreInput = "" -- For entering custom genres
 local genreFilePath = reaper.GetResourcePath() .. "\\Scripts\\ReconTracks\\song_genres.json"
 local showCustomGenreInput = false -- Flag to show/hide custom genre input field
+
+
+local favorites = {} -- Will store song path -> favorite status (true/false)
+local favoritesFilePath = reaper.GetResourcePath() .. "\\Scripts\\ReconTracks\\song_favorites.json"
+local showOnlyFavorites = false -- Flag to filter only favorites
 
 -- Create the ReconTracks directory if it doesn't exist
 function ensureDirectoryExists(path)
@@ -93,6 +101,79 @@ function loadGenres()
   debug("Loaded " .. getTableSize(songGenres) .. " genre entries")
   return true
 end
+-- Save favorites to JSON file
+function saveFavorites()
+  ensureDirectoryExists(favoritesFilePath)
+  debug("Saving favorites to: " .. favoritesFilePath)
+  
+  -- Convert table to JSON string
+  local jsonString = "{\n"
+  local count = 0
+  
+  for path, isFavorite in pairs(favorites) do
+    if count > 0 then
+      jsonString = jsonString .. ",\n"
+    end
+    -- Escape backslashes and quotes for JSON
+    local escapedPath = path:gsub("\\", "\\\\"):gsub('"', '\\"')
+    jsonString = jsonString .. '  "' .. escapedPath .. '": ' .. (isFavorite and "true" or "false")
+    count = count + 1
+  end
+  
+  jsonString = jsonString .. "\n}"
+  
+  -- Save to file
+  local file = io.open(favoritesFilePath, "w")
+  if file then
+    file:write(jsonString)
+    file:close()
+    debug("Successfully saved " .. count .. " favorite entries")
+    return true
+  else
+    debug("ERROR: Failed to save favorites to file")
+    return false
+  end
+end
+
+-- Load favorites from JSON file
+function loadFavorites()
+  debug("Loading favorites from: " .. favoritesFilePath)
+  local file = io.open(favoritesFilePath, "r")
+  if not file then
+    debug("No favorites file found, starting with empty collection")
+    return false
+  end
+  
+  local content = file:read("*all")
+  file:close()
+  
+  -- Clear existing data
+  favorites = {}
+  
+  -- Look for "path": true/false patterns
+  for path, status in content:gmatch('"([^"]+)"%s*:%s*(%a+)') do
+    -- Unescape path
+    path = path:gsub('\\\\', '\\'):gsub('\\"', '"')
+    
+    -- Add to collection (convert text "true"/"false" to boolean)
+    favorites[path] = (status == "true")
+  end
+  
+  debug("Loaded " .. getTableSize(favorites) .. " favorite entries")
+  return true
+end
+
+-- Function to get favorite status for a song
+function isFavorite(songPath)
+  return favorites[songPath] == true
+end
+
+-- Function to toggle favorite status for a song
+function toggleFavorite(songPath)
+  favorites[songPath] = not isFavorite(songPath)
+  saveFavorites() -- Save immediately after change
+  debug("Toggled favorite for " .. songPath .. " to " .. tostring(isFavorite(songPath)))
+end
 
 -- Helper function to get table size
 function getTableSize(t)
@@ -107,6 +188,7 @@ end
 function getSongGenre(songPath)
   return songGenres[songPath] or "Unassigned"
 end
+
 
 -- Function to set genre for a song
 function setSongGenre(songPath, genre)
@@ -415,10 +497,21 @@ end
 
 -- Get list of audio files in a directory
 function getSongList(directory)
+  debug("Scanning directory: " .. directory)
+  
+  -- Try to load from cache first
+  local cachedSongs = loadSongCache(directory)
+  if cachedSongs then
+    -- Cache is still valid, use it
+    debug("Using valid cache with " .. #cachedSongs .. " songs")
+    return addGenreToSongsTable(cachedSongs)
+  end
+  
+  -- If we get here, we need to build the song list from scratch
   local songs = {}
   local i = 0
   
-  debug("Scanning directory: " .. directory)
+  debug("Full directory scan: " .. directory)
   repeat
     -- Get next file in directory
     local fileName = reaper.EnumerateFiles(directory, i)
@@ -438,17 +531,222 @@ function getSongList(directory)
       end
       
       table.insert(songs, songInfo)
-      debug("Found audio file: " .. fileName)
     end
     i = i + 1
   until not fileName
   
   -- Sort alphabetically
   table.sort(songs, function(a, b) return a.name:lower() < b.name:lower() end)
-   -- Ensure all songs have genre info
-  addGenreToSongsTable(songs)
-  return songs
+  
+  -- Save to cache with new fingerprint
+  saveSongCache(directory, songs)
+  
+  -- Ensure all songs have genre info
+  return addGenreToSongsTable(songs)
 end
+
+-- Add this function to handle song cache
+function saveSongCache(directory, songs)
+  if not useSongCache then return false end
+  
+  ensureDirectoryExists(songCacheFilePath)
+  debug("Saving song cache for directory: " .. directory)
+  
+  -- Get current directory fingerprint
+  local fingerprint = getDirectoryFingerprint(directory)
+  
+  -- Convert songs table to cache format
+  local cache = {
+    timestamp = os.time(),
+    directory = directory,
+    fingerprint = fingerprint.fileNamesHash, -- Add the files hash to cache
+    songs = {}
+  }
+  
+  for _, song in ipairs(songs) do
+    local songData = {
+      name = song.name,
+      path = song.path,
+      genre = song.genre or "Unassigned",
+      duration = song.duration or 0
+    }
+    table.insert(cache.songs, songData)
+  end
+  
+  -- Convert to JSON
+  local jsonString = "{\n"
+  jsonString = jsonString .. '  "timestamp": ' .. cache.timestamp .. ',\n'
+  jsonString = jsonString .. '  "directory": "' .. cache.directory:gsub("\\", "\\\\") .. '",\n'
+  jsonString = jsonString .. '  "fingerprint": "' .. cache.fingerprint .. '",\n'
+  jsonString = jsonString .. '  "songs": [\n'
+  
+  for i, song in ipairs(cache.songs) do
+    if i > 1 then
+      jsonString = jsonString .. ",\n"
+    end
+    
+    local escapedPath = song.path:gsub("\\", "\\\\"):gsub('"', '\\"')
+    jsonString = jsonString .. '    {\n'
+    jsonString = jsonString .. '      "name": "' .. song.name:gsub('"', '\\"') .. '",\n'
+    jsonString = jsonString .. '      "path": "' .. escapedPath .. '",\n'
+    jsonString = jsonString .. '      "genre": "' .. (song.genre or "Unassigned"):gsub('"', '\\"') .. '",\n'
+    jsonString = jsonString .. '      "duration": ' .. (song.duration or 0) .. '\n'
+    jsonString = jsonString .. '    }'
+  end
+  
+  jsonString = jsonString .. "\n  ]\n}"
+  
+  -- Save to file
+  local file = io.open(songCacheFilePath, "w")
+  if file then
+    file:write(jsonString)
+    file:close()
+    debug("Successfully saved cache with " .. #cache.songs .. " songs")
+    return true
+  else
+    debug("ERROR: Failed to save song cache to file")
+    return false
+  end
+end
+
+-- Load songs from cache
+function loadSongCache(directory)
+  if not useSongCache then return nil end
+  
+  debug("Trying to load song cache for directory: " .. directory)
+  local file = io.open(songCacheFilePath, "r")
+  if not file then
+    debug("No cache file found")
+    return nil
+  end
+  
+  local content = file:read("*all")
+  file:close()
+  
+  -- Parse cached directory
+  local cachedDir = content:match('"directory":%s*"([^"]+)"')
+  if not cachedDir then
+    debug("Invalid cache format - no directory found")
+    return nil
+  end
+  
+  -- Fix escaped backslashes
+  cachedDir = cachedDir:gsub("\\\\", "\\")
+  
+  -- Check if cached directory matches current one
+  if cachedDir ~= directory then
+    debug("Cache is for a different directory: " .. cachedDir)
+    return nil
+  end
+  
+  -- Parse timestamp
+  local timestamp = tonumber(content:match('"timestamp":%s*(%d+)'))
+  if not timestamp then
+    debug("Invalid cache format - no timestamp found")
+    return nil
+  end
+  
+  -- Check if cache is too old (older than 1 hour)
+  if os.time() - timestamp > 3600 then
+    debug("Cache is older than 1 hour, will refresh")
+    return nil
+  end
+  
+  -- Get current directory state to compare with cache
+  local currentFingerprint = getDirectoryFingerprint(directory)
+  local cachedFingerprint = content:match('"fingerprint":%s*"([^"]*)"')
+  
+  -- If no fingerprint in cache or fingerprints don't match, refresh cache
+  if not cachedFingerprint or cachedFingerprint ~= currentFingerprint.fileNamesHash then
+    debug("Directory contents changed (files renamed/added/removed), refreshing cache")
+    return nil
+  end
+  
+  -- Parse songs
+  local songs = {}
+  local pattern = '"name":%s*"([^"]*)".-"path":%s*"([^"]*)".-"genre":%s*"([^"]*)".-"duration":%s*([%d%.]+)'
+  
+  for name, path, genre, duration in content:gmatch(pattern) do
+    -- Unescape path and other strings
+    path = path:gsub("\\\\", "\\")
+    name = name:gsub('\\"', '"')
+    genre = genre:gsub('\\"', '"')
+    
+    -- Make sure file still exists before adding to cache
+    if reaper.file_exists(path) then
+      local song = {
+        name = name,
+        path = path,
+        genre = genre,
+        duration = tonumber(duration) or 0
+      }
+      table.insert(songs, song)
+    else
+      debug("Skipping missing file from cache: " .. path)
+    end
+  end
+  
+  if #songs > 0 then
+    debug("Successfully loaded " .. #songs .. " songs from cache")
+    return songs
+  else
+    debug("Cache contained no valid songs")
+    return nil
+  end
+end
+
+-- File fingerprinting for directory change detection
+function getDirectoryFingerprint(directory)
+  local fingerprint = {
+    path = directory,
+    fileCount = 0,
+    newestFile = 0,
+    totalSize = 0,
+    fileNames = {} -- Add tracking of actual filenames
+  }
+  
+  local i = 0
+  repeat
+    local fileName = reaper.EnumerateFiles(directory, i)
+    if fileName and isAudioFile(fileName) then
+      fingerprint.fileCount = fingerprint.fileCount + 1
+      
+      -- Add filename to the tracking list
+      table.insert(fingerprint.fileNames, fileName)
+      
+      -- Get file info
+      local fullPath = directory .. "\\" .. fileName
+      local fileAttr = reaper.file_exists(fullPath)
+      if fileAttr then
+        -- Get file modification time if possible
+        local info = reaper.BR_GetMediaItemTakeInfo_Value
+        if info then
+          local modTime = reaper.BR_GetMediaSourceProperties(fullPath, "D_MODTIME")
+          if modTime and modTime > fingerprint.newestFile then
+            fingerprint.newestFile = modTime
+          end
+        end
+        
+        -- Add to total size (crude approximation)
+        fingerprint.totalSize = fingerprint.totalSize + 1
+      end
+    end
+    i = i + 1
+  until not fileName
+  
+  -- Sort the filenames for consistent comparison
+  table.sort(fingerprint.fileNames)
+  
+  -- Create a hash of the filenames
+  local fileNamesHash = ""
+  for _, name in ipairs(fingerprint.fileNames) do
+    fileNamesHash = fileNamesHash .. name .. "|"
+  end
+  fingerprint.fileNamesHash = fileNamesHash
+  
+  return fingerprint
+end
+
 
 -- Format seconds to MM:SS
 function formatTime(seconds)
@@ -464,20 +762,30 @@ function stringContains(str, searchTerm)
 end
 
 -- Enhanced filter function to include genres
-function filterSongs(songs, searchTerm)
-  if not searchTerm or searchTerm == "" then
-    return songs
-  end
-  
+function filterSongs(songs, searchTerm, favoritesOnly)
   local filtered = {}
-  local lowerSearchTerm = string.lower(searchTerm)
   
   for _, song in ipairs(songs) do
-    local lowerName = string.lower(song.name)
-    local lowerGenre = string.lower(song.genre or "")
+    local matchesSearch = true
+    local matchesFavorite = true
     
-    -- Search in both name and genre
-    if string.find(lowerName, lowerSearchTerm) or string.find(lowerGenre, lowerSearchTerm) then
+    -- Apply search term filter if provided
+    if searchTerm and searchTerm ~= "" then
+      local lowerSearchTerm = string.lower(searchTerm)
+      local lowerName = string.lower(song.name)
+      local lowerGenre = string.lower(song.genre or "")
+      
+      -- Search in both name and genre
+      matchesSearch = string.find(lowerName, lowerSearchTerm) or string.find(lowerGenre, lowerSearchTerm)
+    end
+    
+    -- Apply favorites filter if requested
+    if favoritesOnly then
+      matchesFavorite = isFavorite(song.path)
+    end
+    
+    -- Include song only if it passes both filters
+    if matchesSearch and matchesFavorite then
       table.insert(filtered, song)
     end
   end
@@ -543,6 +851,9 @@ end
 function showEnhancedUI()
   local songFolder = getSavedFolder()
   local allSongs = getSongList(songFolder)
+  
+  -- Initialize or restore favorites
+  loadFavorites()
   
   -- Initialize or restore queue
   local queue = loadQueue()
@@ -728,20 +1039,28 @@ initImGuiKeys()
         
         -- Search box with hint about genre search
         reaper.ImGui_Text(ctx, "Search (name or genre):")
-        reaper.ImGui_SameLine(ctx)
-        reaper.ImGui_SetNextItemWidth(ctx, windowWidth - 250)
-        local rv, newSearchText = reaper.ImGui_InputText(ctx, "##search", searchText)
-        
-        if rv then
-          searchText = newSearchText
-          filteredSongs = filterSongs(allSongs, searchText)
-        end
-        
-        reaper.ImGui_SameLine(ctx)
-        if reaper.ImGui_Button(ctx, "Clear") then
-          searchText = ""
-          filteredSongs = allSongs
-        end
+  reaper.ImGui_SameLine(ctx)
+  reaper.ImGui_SetNextItemWidth(ctx, windowWidth - 350) -- Reduced width to make room for favorites toggle
+  local rv, newSearchText = reaper.ImGui_InputText(ctx, "##search", searchText)
+  
+  if rv then
+    searchText = newSearchText
+    filteredSongs = filterSongs(allSongs, searchText, showOnlyFavorites)
+  end
+  
+  reaper.ImGui_SameLine(ctx)
+  if reaper.ImGui_Button(ctx, "Clear") then
+    searchText = ""
+    filteredSongs = filterSongs(allSongs, "", showOnlyFavorites)
+  end
+  
+  -- Favorites filter toggle button
+  reaper.ImGui_SameLine(ctx)
+  local favButtonText = showOnlyFavorites and "All Songs" or "Favorites"
+  if reaper.ImGui_Button(ctx, favButtonText) then
+    showOnlyFavorites = not showOnlyFavorites
+    filteredSongs = filterSongs(allSongs, searchText, showOnlyFavorites)
+  end
 		
 		
 		  -- Add Random Loader button
@@ -856,22 +1175,31 @@ initImGuiKeys()
               
               reaper.ImGui_PopID(ctx)
               
-              -- Actions column
               reaper.ImGui_TableNextColumn(ctx)
-              reaper.ImGui_PushID(ctx, "buttons" .. i)
-              if reaper.ImGui_Button(ctx, "Load") then
-                reaper.Undo_BeginBlock()
-                loadSong(song.path, 0, false)
-                reaper.Undo_EndBlock("Load track: " .. song.name, -1)
-              end
-              
-              reaper.ImGui_SameLine(ctx)
-              
-              if reaper.ImGui_Button(ctx, "+Queue") then
-                table.insert(queue, song)
-                saveQueue(queue)
-              end
-              reaper.ImGui_PopID(ctx)
+  reaper.ImGui_PushID(ctx, "buttons" .. i)
+  
+  -- Add favorite toggle button
+  local heartIcon = isFavorite(song.path) and "-FAV" or "+fav"
+  if reaper.ImGui_Button(ctx, heartIcon) then
+    toggleFavorite(song.path)
+    -- No need to refresh the filtered songs here as we're just toggling a status
+  end
+  
+  reaper.ImGui_SameLine(ctx)
+  
+  if reaper.ImGui_Button(ctx, "Load") then
+    reaper.Undo_BeginBlock()
+    loadSong(song.path, 0, false)
+    reaper.Undo_EndBlock("Load track: " .. song.name, -1)
+  end
+  
+  reaper.ImGui_SameLine(ctx)
+  
+  if reaper.ImGui_Button(ctx, "+Queue") then
+    table.insert(queue, song)
+    saveQueue(queue)
+  end
+  reaper.ImGui_PopID(ctx)
             end
                       
             reaper.ImGui_EndTable(ctx)

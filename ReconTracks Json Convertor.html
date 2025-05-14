@@ -345,6 +345,60 @@
             color: var(--secondary-red);
             text-decoration: underline;
         }
+        
+        .format-badge {
+            display: inline-block;
+            background-color: rgba(21, 101, 192, 0.2);
+            padding: 3px 8px;
+            border-radius: 4px;
+            margin-right: 5px;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        
+        .formats-container {
+            margin-top: 15px;
+        }
+        
+        /* Stats section */
+        .stats-container {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background-color: #252525;
+            padding: 15px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            flex: 1;
+            min-width: 150px;
+            margin: 5px;
+            text-align: center;
+            border-bottom: 3px solid var(--secondary-red);
+        }
+        
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--accent-white);
+            margin: 5px 0;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            color: #999;
+        }
+        
+        /* Table Actions */
+        .table-actions {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
     </style>
 </head>
 <body>
@@ -369,6 +423,18 @@
                     <li>Import the CSV file into Google Sheets</li>
                     <li>Upload the data to your Song request platform like <a href="https://www.streamersonglist.com/t/recontastic/songs" target="_blank">streamersonglist</a></li>
                 </ol>
+                
+                <h3>Supported Audio Formats:</h3>
+                <div class="formats-container">
+                    <span class="format-badge">.mp3</span>
+                    <span class="format-badge">.wav</span>
+                    <span class="format-badge">.flac</span>
+                    <span class="format-badge">.ogg</span>
+                    <span class="format-badge">.m4a</span>
+                    <span class="format-badge">.aiff</span>
+                    <span class="format-badge">.wma</span>
+                    <span class="format-badge">.mp4</span>
+                </div>
             </div>
         </div>
     </div>
@@ -380,13 +446,34 @@
     
     <div id="tableContainer" class="container hidden">
         <h2>Step 2: Review Extracted Data</h2>
-        <button id="downloadCSV">Download CSV</button>
+        
+        <div id="statsContainer" class="stats-container">
+            <!-- Stats will be inserted here -->
+        </div>
+        
+        <div class="table-actions">
+            <button id="downloadCSV">Download CSV</button>
+            <button id="filterBtn">Filter By Format</button>
+            <select id="formatFilter" style="padding: 10px; border-radius: var(--border-radius); background-color: #252525; color: var(--text-color); border: 1px solid #444;">
+                <option value="all">All Formats</option>
+                <option value="mp3">.mp3</option>
+                <option value="wav">.wav</option>
+                <option value="flac">.flac</option>
+                <option value="ogg">.ogg</option>
+                <option value="m4a">.m4a</option>
+                <option value="aiff">.aiff</option>
+                <option value="wma">.wma</option>
+                <option value="mp4">.mp4</option>
+            </select>
+        </div>
+        
         <table id="musicTable">
             <thead>
                 <tr>
                     <th>Artist</th>
                     <th>Song Name</th>
                     <th>Genre</th>
+                    <th>Format</th>
                 </tr>
             </thead>
             <tbody id="musicTableBody">
@@ -405,12 +492,108 @@
             accordionHeader.addEventListener('click', function() {
                 accordion.classList.toggle('active');
             });
+            
+            // Activate filter button
+            document.getElementById('filterBtn').addEventListener('click', filterByFormat);
+            
+            // Make dropdown also trigger filtering
+            document.getElementById('formatFilter').addEventListener('change', filterByFormat);
         });
+        
+        // Global variable to store processed data
+        let processedData = [];
+        
+        function filterByFormat() {
+            const format = document.getElementById('formatFilter').value;
+            const tableBody = document.getElementById('musicTableBody');
+            tableBody.innerHTML = '';
+            
+            let filteredData = processedData;
+            
+            if (format !== 'all') {
+                filteredData = processedData.filter(item => item.format.toLowerCase() === format.toLowerCase());
+            }
+            
+            // Repopulate table with filtered data
+            filteredData.forEach(item => {
+                const row = tableBody.insertRow();
+                const artistCell = row.insertCell(0);
+                const songNameCell = row.insertCell(1);
+                const genreCell = row.insertCell(2);
+                const formatCell = row.insertCell(3);
+                
+                artistCell.textContent = item.artist;
+                songNameCell.textContent = item.songName;
+                genreCell.textContent = item.genre;
+                formatCell.textContent = item.format;
+            });
+            
+            // Update stats
+            updateStats(filteredData);
+        }
+        
+        function updateStats(data) {
+            const statsContainer = document.getElementById('statsContainer');
+            statsContainer.innerHTML = '';
+            
+            // Total tracks
+            const totalStat = createStatCard(data.length, 'Total Tracks');
+            statsContainer.appendChild(totalStat);
+            
+            // Unique artists
+            const uniqueArtists = new Set(data.map(item => item.artist)).size;
+            const artistsStat = createStatCard(uniqueArtists, 'Artists');
+            statsContainer.appendChild(artistsStat);
+            
+            // Unique genres
+            const uniqueGenres = new Set(data.map(item => item.genre)).size;
+            const genresStat = createStatCard(uniqueGenres, 'Genres');
+            statsContainer.appendChild(genresStat);
+            
+            // Formats count
+            const formatCounts = countFormats(data);
+            const formatsStat = createStatCard(Object.keys(formatCounts).length, 'File Formats');
+            statsContainer.appendChild(formatsStat);
+        }
+        
+        function countFormats(data) {
+            const counts = {};
+            
+            data.forEach(item => {
+                if (!counts[item.format]) {
+                    counts[item.format] = 0;
+                }
+                counts[item.format]++;
+            });
+            
+            return counts;
+        }
+        
+        function createStatCard(number, label) {
+            const card = document.createElement('div');
+            card.className = 'stat-card';
+            
+            const numberElement = document.createElement('div');
+            numberElement.className = 'stat-number';
+            numberElement.textContent = number;
+            
+            const labelElement = document.createElement('div');
+            labelElement.className = 'stat-label';
+            labelElement.textContent = label;
+            
+            card.appendChild(numberElement);
+            card.appendChild(labelElement);
+            
+            return card;
+        }
     </script>
 
     <script>
         document.getElementById('jsonFileInput').addEventListener('change', handleFileSelect);
         document.getElementById('downloadCSV').addEventListener('click', downloadCSV);
+        
+        // Supported audio formats
+        const supportedFormats = ['.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aiff', '.wma', '.mp4'];
         
         function handleFileSelect(event) {
             const file = event.target.files[0];
@@ -432,6 +615,8 @@
             const tableBody = document.getElementById('musicTableBody');
             tableBody.innerHTML = '';
             
+            processedData = []; // Clear global data
+            
             let rowCount = 0;
             
             // Process each file path and extract artist, song name, and genre
@@ -439,23 +624,39 @@
                 // Extract the filename
                 const fileName = filePath.split('\\').pop();
                 
-                // Parse the filename to get artist and song name
-                // Assuming format is "Artist - Song Name.mp3"
-                const match = fileName.match(/(.+?) - (.+?)\.mp3$/);
+                // Get file extension
+                const extension = getFileExtension(fileName);
+                
+                // Check if the format is supported
+                if (!isSupportedFormat(extension)) continue;
+                
+                // Parse the filename to get artist and song name based on the format "Artist - Song Name.extension"
+                const fileNameWithoutExtension = fileName.replace(new RegExp(`\\${extension}$`), '');
+                const match = fileNameWithoutExtension.match(/(.+?) - (.+?)$/);
                 
                 if (match) {
-                    const artist = match[1];
-                    const songName = match[2];
+                    const artist = match[1].trim();
+                    const songName = match[2].trim();
                     
                     // Create a new row in the table
                     const row = tableBody.insertRow();
                     const artistCell = row.insertCell(0);
                     const songNameCell = row.insertCell(1);
                     const genreCell = row.insertCell(2);
+                    const formatCell = row.insertCell(3);
                     
                     artistCell.textContent = artist;
                     songNameCell.textContent = songName;
                     genreCell.textContent = genre;
+                    formatCell.textContent = extension;
+                    
+                    // Store processed data
+                    processedData.push({
+                        artist,
+                        songName,
+                        genre,
+                        format: extension
+                    });
                     
                     rowCount++;
                 }
@@ -466,14 +667,35 @@
             
             // Add a message showing how many tracks were processed
             const container = document.getElementById('tableContainer');
+            
+            // Remove any existing status messages
+            const existingStatus = container.querySelector('.status-message');
+            if (existingStatus) {
+                container.removeChild(existingStatus);
+            }
+            
             const statusMessage = document.createElement('p');
             statusMessage.textContent = `Successfully processed ${rowCount} tracks`;
+            statusMessage.className = 'status-message';
             statusMessage.style.color = '#4CAF50';
             statusMessage.style.fontWeight = 'bold';
             
-            // Insert the message before the download button
-            const downloadButton = document.getElementById('downloadCSV');
-            container.insertBefore(statusMessage, downloadButton);
+            // Insert the message before the stats container
+            const statsContainer = document.getElementById('statsContainer');
+            container.insertBefore(statusMessage, statsContainer);
+            
+            // Update stats
+            updateStats(processedData);
+        }
+        
+        function getFileExtension(fileName) {
+            const lastDotIndex = fileName.lastIndexOf('.');
+            if (lastDotIndex === -1) return ''; // No extension found
+            return fileName.slice(lastDotIndex);
+        }
+        
+        function isSupportedFormat(extension) {
+            return supportedFormats.includes(extension.toLowerCase());
         }
         
         function downloadCSV() {
@@ -533,9 +755,7 @@
         </div>
     </div>
     <div class="footer-bottom">
-        <p>2025 Recontastic. MIT License – free for personal and professional use. Attribution appreciated, but not required.
-
-</p>
+        <p>2025 Recontastic. MIT License – free for personal and professional use. Attribution appreciated, but not required.</p>
     </div>
 </footer>
 </body>
