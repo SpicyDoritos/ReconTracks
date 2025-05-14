@@ -2,7 +2,7 @@
 
 **ReconTracks** is a REAPER extension designed to streamline loading, organizing, and playing backing tracks for live performance, practice, or studio sessions. Developed with musicians in mind, it features a sleek UI, persistent folder memory, and playlist management.
 
-> Current Version: 2.1  
+> Current Version: 2.2  
 > Author: Recontastic  
 > Requires: REAPER 6.8+ and [ReaImGui](https://github.com/cfillion/reaimgui) extension installed (via [ReaPack](https://reapack.com/))
 
