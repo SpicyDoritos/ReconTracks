@@ -1,6 +1,6 @@
 # 🎸 ReconTracks for REAPER
 
-**ReconTracks**  ReconTracks is a REAPER Lua script designed to streamline loading, organizing, and playing backing tracks for practice or live streaming—all within one app for simplified monitoring and playback. Once installed Just point it to your backing track folder and away you go!
+**ReconTracks**  is a REAPER Lua script designed to streamline loading, organizing, and playing backing tracks for practice or live streaming—all within one app for simplified monitoring and playback. Once installed Just point it to your backing track folder and away you go!
 
 > Current Version: 2.2  
 > Author: Recontastic  
