@@ -1,14 +1,17 @@
--- ReconTracks - Enhanced Backing Track Loader  for Reaper
--- Version 2.2
+-- ReconTracks - Enhanced Backing Track Loader for Recontastic
+-- Version 2.1
 
 -- SETTINGS
 local defaultSongFolder = "C:\\Users\\recontastic\\Desktop\\backtracks" -- <- fallback directory with proper backslashes
 local isConsoleVisible = false -- Set to false to hide console output by default
-local scriptVersion = "2.2"
+local scriptVersion = "2.1"
 local lastLoadedSong = nil
 
 local useSongCache = true -- Enable/disable song caching
 local songCacheFilePath = reaper.GetResourcePath() .. "\\Scripts\\ReconTracks\\song_cache.json"
+
+local volumeMemory = nil
+local useVolumeMemory = true  -- Set to false if you want to disable the feature
 
 -- Global variables for genre management
 local genreTags = {"Rock", "Metal", "Country", "Funk", "Soul", "Classic Rock", "Custom..."} -- Preset genres
@@ -21,6 +24,77 @@ local showCustomGenreInput = false -- Flag to show/hide custom genre input field
 local favorites = {} -- Will store song path -> favorite status (true/false)
 local favoritesFilePath = reaper.GetResourcePath() .. "\\Scripts\\ReconTracks\\song_favorites.json"
 local showOnlyFavorites = false -- Flag to filter only favorites
+
+-- Add these variables near the top with other similar declarations
+local playCounts = {}
+local playCountsFilePath = reaper.GetResourcePath() .. "\\Scripts\\ReconTracks\\song_playcounts.json"
+
+-- Add these functions with the other data persistence functions
+
+function saveSongPlayCounts()
+  ensureDirectoryExists(playCountsFilePath)
+  debug("Saving song play counts to: " .. playCountsFilePath)
+  
+  local jsonString = "{\n"
+  local count = 0
+  
+  for path, playCount in pairs(playCounts) do
+    if count > 0 then
+      jsonString = jsonString .. ",\n"
+    end
+    
+    local escapedPath = path:gsub("\\", "\\\\"):gsub('"', '\\"')
+    jsonString = jsonString .. ' "' .. escapedPath .. '": ' .. playCount
+    count = count + 1
+  end
+  
+  jsonString = jsonString .. "\n}"
+  
+  local file = io.open(playCountsFilePath, "w")
+  if file then
+    file:write(jsonString)
+    file:close()
+    debug("Successfully saved " .. count .. " play count entries")
+    return true
+  else
+    debug("ERROR: Failed to save play counts to file")
+    return false
+  end
+end
+
+function loadSongPlayCounts()
+  debug("Loading song play counts from: " .. playCountsFilePath)
+  local file = io.open(playCountsFilePath, "r")
+  if not file then
+    debug("No play counts file found, starting with empty collection")
+    return false
+  end
+  
+  local content = file:read("*all")
+  file:close()
+  
+  playCounts = {}
+  
+  for path, count in content:gmatch('"([^"]+)"%s*:%s*(%d+)') do
+    path = path:gsub('\\\\', '\\'):gsub('\\"', '"')
+    playCounts[path] = tonumber(count) or 0
+  end
+  
+  debug("Loaded " .. getTableSize(playCounts) .. " play count entries")
+  return true
+end
+
+function incrementPlayCount(songPath)
+  if not songPath then return end
+  
+  playCounts[songPath] = (playCounts[songPath] or 0) + 1
+  debug("Incremented play count for " .. songPath .. " to " .. playCounts[songPath])
+  saveSongPlayCounts()
+end
+
+function getSongPlayCount(songPath)
+  return playCounts[songPath] or 0
+end
 
 -- Create the ReconTracks directory if it doesn't exist
 function ensureDirectoryExists(path)
@@ -392,73 +466,66 @@ function tryInsertMedia(track, songPath, position)
 end
 
 -- Load new song at given position (0 = start or after current playback queue)
-function loadSong(songPath, position, append)
-  debug("Attempting to load file: " .. songPath)
+function loadSong(path, position, append)
+  if volumeMemory and not append then 
+    volumeMemory.onBeforeSongLoad()
+  end
   
-  -- Always use the same track
+  debug("Attempting to load file: " .. path)
   local trackName = "ReconTracks"
   local track = findOrCreateTrack(trackName)
   
-  -- If not appending, clear existing items
   if not append then
+    -- Clear existing track content when not appending
     reaper.SetOnlyTrackSelected(track)
-    reaper.Main_OnCommand(40421, 0) -- Select all items on track
+    reaper.Main_OnCommand(40421, 0) -- Select all items on selected tracks
     local itemCount = reaper.CountSelectedMediaItems(0)
     if itemCount > 0 then
       debug("Removing " .. itemCount .. " existing items")
-      reaper.Main_OnCommand(40006, 0) -- Remove selected items
+      reaper.Main_OnCommand(40006, 0) -- Delete selected items
     else
       debug("No existing items to remove")
     end
     position = 0
   else
-    -- If appending, calculate position after existing items
     if position == 0 then
       position = getTrackEndPosition(track)
       debug("Appending to end of track at position: " .. position)
     end
   end
   
-  -- Try to insert media
   reaper.PreventUIRefresh(1)
-  local length = tryInsertMedia(track, songPath, position)
+  local result = tryInsertMedia(track, path, position)
   
-  if length then
-    -- Make sure the track is not muted
+  if result then
     reaper.SetMediaTrackInfo_Value(track, "B_MUTE", 0)
+    local filename = path:match("([^/\\]+)$")
     
-    -- Make sure track volume is at 0dB (unity gain)
-    reaper.SetMediaTrackInfo_Value(track, "D_VOL", 1.0)
-    
-    -- Get filename for display
-    local filename = songPath:match("([^/\\]+)$")
-    
-    -- Display filename in track name but keep the base "ReconTracks" part
     if not append then
       reaper.GetSetMediaTrackInfo_String(track, "P_NAME", "ReconTracks: " .. filename, true)
     end
     
-    -- If not appending, reset playback position to 0:00
     if not append then
-      reaper.SetEditCurPos(0, true, false) -- Set edit cursor to 0, seekplay=true
+      reaper.SetEditCurPos(0, true, false)
     end
     
-		-- Store the last loaded song information
-	lastLoadedSong = {
-	  name = filename,
-	  path = songPath,
-	  timestamp = os.time()
-	}
-
-	-- Save the last loaded song to persistent storage
-	saveLastLoadedSong(lastLoadedSong)
-	
-    -- Return focus to arrange view and refresh UI
-    reaper.Main_OnCommand(40454, 0)
-    
+    lastLoadedSong = {
+      name = filename,
+      path = path,
+      timestamp = os.time()
+    }
+    saveLastLoadedSong(lastLoadedSong)
+    reaper.Main_OnCommand(40454, 0) -- Peaks building
     reaper.PreventUIRefresh(-1)
     reaper.UpdateArrange()
-    return length
+    
+    -- Call volumeMemory.onAfterSongLoad after successfully loading the song
+    if volumeMemory then
+      volumeMemory.onAfterSongLoad(path)
+    end
+	incrementPlayCount(path)
+    
+    return result
   else
     debug("ERROR: Failed to insert media")
     reaper.ShowMessageBox("Failed to insert the audio file. Try enabling the console for details.", "ReconTracks Error", 0)
@@ -466,6 +533,52 @@ function loadSong(songPath, position, append)
     reaper.UpdateArrange()
     return false
   end
+end
+
+function openLyricsEditor(path, songName)
+    if not path or path == "" then
+        debug("Cannot open lyrics editor: No song path provided")
+        return false
+    end
+    
+    local lyricsScript = reaper.GetResourcePath().."\\Scripts\\ReconTracks-Lyrics.lua"
+    if not reaper.file_exists(lyricsScript) then
+        debug("Error: Lyrics script not found at: "..lyricsScript)
+        reaper.ShowMessageBox("Could not find ReconTracks-Lyrics.lua in the Scripts folder.\n\nPlease make sure the script is installed correctly.", "Script Not Found", 0)
+        return false
+    end
+    
+    -- First check if we have an active lyrics editor
+    if _G.ReconTracksLyrics and _G.ReconTracksLyrics.isEditorOpen then
+        local isOpen = _G.ReconTracksLyrics.isEditorOpen()
+        if isOpen then
+            debug("Found existing lyrics editor, will update for: " .. path)
+            -- If there's already a lyrics editor open, we'll close it
+            _G.ReconTracksLyrics.closeEditor()
+        end
+    end
+    
+    -- Set state for the lyrics editor
+    reaper.SetExtState("ReconTracks", "CurrentSongPath", path, false)
+    reaper.SetExtState("ReconTracks", "CurrentSongName", songName or "", false)
+    
+    -- Now run the lyrics script
+    local cmdId = '_SCRIPTNAME:'..lyricsScript
+    local actionId = reaper.NamedCommandLookup(cmdId)
+    
+    if actionId == 0 then
+        actionId = reaper.AddRemoveReaScript(true, 0, lyricsScript, true)
+    end
+    
+    if actionId ~= 0 then
+        reaper.Main_OnCommand(actionId, 0)
+        debug("Lyrics editor opened for: "..path)
+        return true
+    else
+        debug("Failed to register lyrics script as action")
+        reaper.ShowMessageBox("Could not run the lyrics editor script.", "Error", 0)
+        return false
+    end
 end
 
 -- Extract folder path from a full file path
@@ -495,256 +608,423 @@ function isAudioFile(filename)
   return false
 end
 
--- Get list of audio files in a directory
-function getSongList(directory)
-  debug("Scanning directory: " .. directory)
-  
-  -- Try to load from cache first
-  local cachedSongs = loadSongCache(directory)
-  if cachedSongs then
-    -- Cache is still valid, use it
-    debug("Using valid cache with " .. #cachedSongs .. " songs")
-    return addGenreToSongsTable(cachedSongs)
-  end
-  
-  -- If we get here, we need to build the song list from scratch
-  local songs = {}
-  local i = 0
-  
-  debug("Full directory scan: " .. directory)
-  repeat
-    -- Get next file in directory
-    local fileName = reaper.EnumerateFiles(directory, i)
-    if fileName and isAudioFile(fileName) then
-      -- Get full path for file info
-      local fullPath = directory .. "\\" .. fileName
-      local songInfo = { name = fileName, path = fullPath }
-      
-      -- Add genre information
-      songInfo.genre = getSongGenre(fullPath)
-      
-      -- Try to get duration info for the file
-      local mediaSource = reaper.PCM_Source_CreateFromFile(fullPath)
-      if mediaSource then
-        songInfo.duration = reaper.GetMediaSourceLength(mediaSource)
-        reaper.PCM_Source_Destroy(mediaSource)
-      end
-      
-      table.insert(songs, songInfo)
-    end
-    i = i + 1
-  until not fileName
-  
-  -- Sort alphabetically
-  table.sort(songs, function(a, b) return a.name:lower() < b.name:lower() end)
-  
-  -- Save to cache with new fingerprint
-  saveSongCache(directory, songs)
-  
-  -- Ensure all songs have genre info
-  return addGenreToSongsTable(songs)
-end
-
--- Add this function to handle song cache
-function saveSongCache(directory, songs)
-  if not useSongCache then return false end
-  
-  ensureDirectoryExists(songCacheFilePath)
-  debug("Saving song cache for directory: " .. directory)
-  
-  -- Get current directory fingerprint
-  local fingerprint = getDirectoryFingerprint(directory)
-  
-  -- Convert songs table to cache format
-  local cache = {
-    timestamp = os.time(),
-    directory = directory,
-    fingerprint = fingerprint.fileNamesHash, -- Add the files hash to cache
-    songs = {}
-  }
-  
-  for _, song in ipairs(songs) do
-    local songData = {
-      name = song.name,
-      path = song.path,
-      genre = song.genre or "Unassigned",
-      duration = song.duration or 0
-    }
-    table.insert(cache.songs, songData)
-  end
-  
-  -- Convert to JSON
-  local jsonString = "{\n"
-  jsonString = jsonString .. '  "timestamp": ' .. cache.timestamp .. ',\n'
-  jsonString = jsonString .. '  "directory": "' .. cache.directory:gsub("\\", "\\\\") .. '",\n'
-  jsonString = jsonString .. '  "fingerprint": "' .. cache.fingerprint .. '",\n'
-  jsonString = jsonString .. '  "songs": [\n'
-  
-  for i, song in ipairs(cache.songs) do
-    if i > 1 then
-      jsonString = jsonString .. ",\n"
+-- Optimized song cache loading with better performance for large libraries
+function loadSongCache(directoryPath)
+    if not useSongCache then return nil end
+    debug("Trying to load song cache for directory: " .. directoryPath)
+    
+    local file = io.open(songCacheFilePath, "r")
+    if not file then
+        debug("No cache file found at: " .. songCacheFilePath)
+        return nil
     end
     
-    local escapedPath = song.path:gsub("\\", "\\\\"):gsub('"', '\\"')
-    jsonString = jsonString .. '    {\n'
-    jsonString = jsonString .. '      "name": "' .. song.name:gsub('"', '\\"') .. '",\n'
-    jsonString = jsonString .. '      "path": "' .. escapedPath .. '",\n'
-    jsonString = jsonString .. '      "genre": "' .. (song.genre or "Unassigned"):gsub('"', '\\"') .. '",\n'
-    jsonString = jsonString .. '      "duration": ' .. (song.duration or 0) .. '\n'
-    jsonString = jsonString .. '    }'
-  end
-  
-  jsonString = jsonString .. "\n  ]\n}"
-  
-  -- Save to file
-  local file = io.open(songCacheFilePath, "w")
-  if file then
-    file:write(jsonString)
+    -- Read only the first part of the file to get metadata
+    local headerContent = file:read(2048) -- Read first 2KB to get header info
+    
+    -- Extract directory from header
+    local cachedDir = headerContent:match('"directory":%s*"([^"]+)"')
+    if not cachedDir then
+        debug("Invalid cache format - no directory found")
+        file:close()
+        return nil
+    end
+    
+    cachedDir = cachedDir:gsub("\\\\", "\\")
+    if cachedDir ~= directoryPath then
+        debug("Cache is for a different directory: " .. cachedDir .. " vs requested " .. directoryPath)
+        file:close()
+        return nil
+    end
+    
+    -- Extract timestamp from header
+    local timestamp = tonumber(headerContent:match('"timestamp":%s*(%d+)'))
+    if not timestamp then
+        debug("Invalid cache format - no timestamp found")
+        file:close()
+        return nil
+    end
+    
+    -- Check if cache is too old (configurable time period)
+    local cacheMaxAge = 24 * 3600 -- 24 hours
+    if os.time() - timestamp > cacheMaxAge then
+        debug("Cache is older than " .. (cacheMaxAge/3600) .. " hours, will refresh")
+        file:close()
+        return nil
+    end
+    
+    -- Get current directory fingerprint
+    local currentFingerprint = getDirectoryFingerprint(directoryPath)
+    
+    -- If we can't get a fingerprint, fallback to using cache
+    if not currentFingerprint then
+        debug("Couldn't generate directory fingerprint, using cache anyway")
+    else
+        -- Extract fingerprint from header
+        local cachedFingerprint = headerContent:match('"fingerprint":%s*"([^"]*)"')
+        
+        -- Compare fingerprints
+        if not cachedFingerprint then
+            debug("No fingerprint in cache, will refresh")
+            file:close()
+            return nil
+        end
+        
+        -- Only check file count for a quick comparison
+        local cachedFileCount = tonumber(cachedFingerprint:match("#(%d+)"))
+        local currentFileCount = currentFingerprint.fileCount
+        
+        -- If file count differs by more than 3 files, refresh cache
+        if cachedFileCount and currentFileCount and math.abs(cachedFileCount - currentFileCount) > 3 then
+            debug("Directory file count changed significantly: " .. cachedFileCount .. " vs " .. currentFileCount)
+            file:close()
+            return nil
+        end
+    end
+    
+    -- If all checks pass, read the full file and parse songs
+    file:seek("set", 0) -- Reset to beginning of file
+    local content = file:read("*all")
     file:close()
-    debug("Successfully saved cache with " .. #cache.songs .. " songs")
-    return true
-  else
-    debug("ERROR: Failed to save song cache to file")
+    
+    local songs = {}
+    local pattern = '"name":%s*"([^"]*)".-"path":%s*"([^"]*)".-"genre":%s*"([^"]*)".-"duration":%s*([%d%.]+)'
+    
+    -- Reuse a table for file existence checks to improve performance
+    local fileExistsCache = {}
+    local songsAdded = 0
+    
+    -- Process songs more efficiently
+    for name, path, genre, duration in content:gmatch(pattern) do
+        path = path:gsub("\\\\", "\\")
+        name = name:gsub('\\"', '"')
+        genre = genre:gsub('\\"', '"')
+        
+        -- Cache file existence checks
+        if fileExistsCache[path] == nil then
+            fileExistsCache[path] = reaper.file_exists(path)
+        end
+        
+        if fileExistsCache[path] then
+            local song = {
+                name = name,
+                path = path,
+                genre = genre or "Unassigned",
+                duration = tonumber(duration) or 0
+            }
+            table.insert(songs, song)
+            songsAdded = songsAdded + 1
+        end
+    end
+    
+    if songsAdded > 0 then
+        debug("Successfully loaded " .. songsAdded .. " songs from cache")
+        return songs
+    else
+        debug("Cache contained no valid songs")
+        return nil
+    end
+end
+
+-- More efficient song list scanning with pagination support
+function getSongList(directoryPath)
+    debug("Scanning directory: " .. directoryPath)
+    
+    -- Try using cache first
+    local cachedSongs = loadSongCache(directoryPath)
+    if cachedSongs then
+        debug("Using valid cache with " .. #cachedSongs .. " songs")
+        return addGenreToSongsTable(cachedSongs)
+    end
+    
+    -- Cache invalid or missing, scan directory
+    local songs = {}
+    local i = 0
+    local batchSize = 50 -- Process in batches for large directories
+    local batchCount = 0
+    
+    debug("Full directory scan: " .. directoryPath)
+    
+    repeat
+        local fileName = reaper.EnumerateFiles(directoryPath, i)
+        if fileName and isAudioFile(fileName) then
+            local filePath = directoryPath .. "\\" .. fileName
+            local song = {name = fileName, path = filePath}
+            
+            -- Only get duration for first 200 files immediately
+            -- rest will be loaded on demand or in background
+            if #songs < 200 then
+                local source = reaper.PCM_Source_CreateFromFile(filePath)
+                if source then
+                    song.duration = reaper.GetMediaSourceLength(source)
+                    reaper.PCM_Source_Destroy(source)
+                end
+            end
+            
+            song.genre = getSongGenre(filePath)
+            table.insert(songs, song)
+            
+            -- Update UI periodically for large directories
+            batchCount = batchCount + 1
+            if batchCount >= batchSize then
+                debug("Scanned " .. #songs .. " files so far...")
+                batchCount = 0
+                -- Could add a reaper.defer call here for smoother UI updates
+            end
+        end
+        i = i + 1
+    until not fileName
+    
+    -- Sort songs by name
+    table.sort(songs, function(a, b)
+        return a.name:lower() < b.name:lower()
+    end)
+    
+    -- Save cache in background
+    saveSongCache(directoryPath, songs)
+    return addGenreToSongsTable(songs)
+end
+
+function initVolumeMemory()
+  if not useVolumeMemory then return false end
+  
+  local vm_path = reaper.GetResourcePath() .. "\\Scripts\\ReconTracks-VolumeMemory.lua"
+  
+  -- Check if the file exists
+  if not reaper.file_exists(vm_path) then
+    debug("VolumeMemory script not found at: " .. vm_path)
     return false
   end
+  
+  debug("Loading VolumeMemory script...")
+  
+  -- Load the script
+  local load_result, vm_module = pcall(dofile, vm_path)
+  
+  if not load_result or not vm_module then
+    debug("Failed to load VolumeMemory module: " .. tostring(vm_module))
+    return false
+  end
+  
+  volumeMemory = vm_module
+  volumeMemory.init()
+  debug("VolumeMemory module loaded successfully")
+  return true
 end
 
--- Load songs from cache
-function loadSongCache(directory)
-  if not useSongCache then return nil end
-  
-  debug("Trying to load song cache for directory: " .. directory)
-  local file = io.open(songCacheFilePath, "r")
-  if not file then
-    debug("No cache file found")
-    return nil
-  end
-  
-  local content = file:read("*all")
-  file:close()
-  
-  -- Parse cached directory
-  local cachedDir = content:match('"directory":%s*"([^"]+)"')
-  if not cachedDir then
-    debug("Invalid cache format - no directory found")
-    return nil
-  end
-  
-  -- Fix escaped backslashes
-  cachedDir = cachedDir:gsub("\\\\", "\\")
-  
-  -- Check if cached directory matches current one
-  if cachedDir ~= directory then
-    debug("Cache is for a different directory: " .. cachedDir)
-    return nil
-  end
-  
-  -- Parse timestamp
-  local timestamp = tonumber(content:match('"timestamp":%s*(%d+)'))
-  if not timestamp then
-    debug("Invalid cache format - no timestamp found")
-    return nil
-  end
-  
-  -- Check if cache is too old (older than 1 hour)
-  if os.time() - timestamp > 3600 then
-    debug("Cache is older than 1 hour, will refresh")
-    return nil
-  end
-  
-  -- Get current directory state to compare with cache
-  local currentFingerprint = getDirectoryFingerprint(directory)
-  local cachedFingerprint = content:match('"fingerprint":%s*"([^"]*)"')
-  
-  -- If no fingerprint in cache or fingerprints don't match, refresh cache
-  if not cachedFingerprint or cachedFingerprint ~= currentFingerprint.fileNamesHash then
-    debug("Directory contents changed (files renamed/added/removed), refreshing cache")
-    return nil
-  end
-  
-  -- Parse songs
-  local songs = {}
-  local pattern = '"name":%s*"([^"]*)".-"path":%s*"([^"]*)".-"genre":%s*"([^"]*)".-"duration":%s*([%d%.]+)'
-  
-  for name, path, genre, duration in content:gmatch(pattern) do
-    -- Unescape path and other strings
-    path = path:gsub("\\\\", "\\")
-    name = name:gsub('\\"', '"')
-    genre = genre:gsub('\\"', '"')
+
+
+-- Optimized save song cache for large libraries
+function saveSongCache(directoryPath, songs)
+    if not useSongCache then return false end
     
-    -- Make sure file still exists before adding to cache
-    if reaper.file_exists(path) then
-      local song = {
-        name = name,
-        path = path,
-        genre = genre,
-        duration = tonumber(duration) or 0
-      }
-      table.insert(songs, song)
-    else
-      debug("Skipping missing file from cache: " .. path)
+    ensureDirectoryExists(songCacheFilePath)
+    debug("Saving song cache for directory: " .. directoryPath)
+    
+    local fingerprint = getDirectoryFingerprint(directoryPath)
+    local timestamp = os.time()
+    
+    -- Prepare song data more efficiently
+    local file = io.open(songCacheFilePath, "w")
+    if not file then
+        debug("ERROR: Failed to open cache file for writing: " .. songCacheFilePath)
+        return false
     end
-  end
-  
-  if #songs > 0 then
-    debug("Successfully loaded " .. #songs .. " songs from cache")
-    return songs
-  else
-    debug("Cache contained no valid songs")
-    return nil
-  end
+    
+    -- Write cache more efficiently using chunks
+    -- Write header
+    file:write('{\n')
+    file:write('  "timestamp": ' .. timestamp .. ',\n')
+    file:write('  "directory": "' .. directoryPath:gsub("\\", "\\\\") .. '",\n')
+    file:write('  "fingerprint": "' .. fingerprint.hashValue .. '",\n')
+    file:write('  "songs": [\n')
+    
+    -- Write songs in chunks to avoid memory issues
+    for i, song in ipairs(songs) do
+        if i > 1 then file:write(",\n") end
+        
+        local escapedPath = song.path:gsub("\\", "\\\\"):gsub('"', '\\"')
+        local escapedName = song.name:gsub('"', '\\"')
+        local escapedGenre = (song.genre or "Unassigned"):gsub('"', '\\"')
+        
+        local chunk = '    {\n'
+        chunk = chunk .. '      "name": "' .. escapedName .. '",\n'
+        chunk = chunk .. '      "path": "' .. escapedPath .. '",\n'
+        chunk = chunk .. '      "genre": "' .. escapedGenre .. '",\n'
+        chunk = chunk .. '      "duration": ' .. (song.duration or 0) .. '\n'
+        chunk = chunk .. '    }'
+        
+        file:write(chunk)
+    end
+    
+    file:write("\n  ]\n}")
+    file:close()
+    
+    debug("Successfully saved cache with " .. #songs .. " songs to " .. songCacheFilePath)
+    return true
+end
+
+
+function showSongTable(context, songs, pageSize, currentPage)
+    -- Calculate pagination
+    local totalSongs = #songs
+    local totalPages = math.ceil(totalSongs / pageSize)
+    currentPage = math.min(currentPage, totalPages)
+    
+    -- Display pagination controls
+    reaper.ImGui_Text(context, "Page " .. currentPage .. " of " .. totalPages)
+    reaper.ImGui_SameLine(context)
+    
+    local startIdx = (currentPage - 1) * pageSize + 1
+    local endIdx = math.min(startIdx + pageSize - 1, totalSongs)
+    
+    if reaper.ImGui_Button(context, "<<") and currentPage > 1 then
+        currentPage = 1
+    end
+    reaper.ImGui_SameLine(context)
+    
+    if reaper.ImGui_Button(context, "<") and currentPage > 1 then
+        currentPage = currentPage - 1
+    end
+    reaper.ImGui_SameLine(context)
+    
+    if reaper.ImGui_Button(context, ">") and currentPage < totalPages then
+        currentPage = currentPage + 1
+    end
+    reaper.ImGui_SameLine(context)
+    
+    if reaper.ImGui_Button(context, ">>") and currentPage < totalPages then
+        currentPage = totalPages
+    end
+    
+    -- Display current range
+    reaper.ImGui_SameLine(context)
+    reaper.ImGui_Text(context, "Showing " .. startIdx .. "-" .. endIdx .. " of " .. totalSongs)
+    
+    -- Return page info to be stored
+    return currentPage, startIdx, endIdx
+end
+
+function modifyUIForPagination(context, filteredSongs)
+    -- Add these variables to your UI function
+    local pageSize = 50 -- Adjust as needed
+    local currentPage = 1 -- Track this globally in your UI function
+    
+    currentPage, startIdx, endIdx = showSongTable(context, filteredSongs, pageSize, currentPage)
+    
+    -- Then in your table rendering loop:
+    if reaper.ImGui_BeginTable(context, "SongTable", 4, 
+                               reaper.ImGui_TableFlags_Borders() + 
+                               reaper.ImGui_TableFlags_RowBg() + 
+                               reaper.ImGui_TableFlags_ScrollY(), 0, tableHeight) then
+        -- Setup columns as before
+        
+        -- Only process songs for current page
+        for i = startIdx, endIdx do
+            local song = filteredSongs[i]
+            -- Render song row as before
+        end
+        
+        reaper.ImGui_EndTable(context)
+    end
+    
+    return currentPage -- Store this for next frame
+end
+
+function lazyLoadDuration(song)
+    if not song.duration or song.duration <= 0 then
+        local source = reaper.PCM_Source_CreateFromFile(song.path)
+        if source then
+            song.duration = reaper.GetMediaSourceLength(source)
+            reaper.PCM_Source_Destroy(source)
+        end
+    end
+    return song.duration or 0
 end
 
 -- File fingerprinting for directory change detection
-function getDirectoryFingerprint(directory)
-  local fingerprint = {
-    path = directory,
-    fileCount = 0,
-    newestFile = 0,
-    totalSize = 0,
-    fileNames = {} -- Add tracking of actual filenames
-  }
-  
-  local i = 0
-  repeat
-    local fileName = reaper.EnumerateFiles(directory, i)
-    if fileName and isAudioFile(fileName) then
-      fingerprint.fileCount = fingerprint.fileCount + 1
-      
-      -- Add filename to the tracking list
-      table.insert(fingerprint.fileNames, fileName)
-      
-      -- Get file info
-      local fullPath = directory .. "\\" .. fileName
-      local fileAttr = reaper.file_exists(fullPath)
-      if fileAttr then
-        -- Get file modification time if possible
-        local info = reaper.BR_GetMediaItemTakeInfo_Value
-        if info then
-          local modTime = reaper.BR_GetMediaSourceProperties(fullPath, "D_MODTIME")
-          if modTime and modTime > fingerprint.newestFile then
-            fingerprint.newestFile = modTime
-          end
+function getDirectoryFingerprint(directoryPath)
+    local fingerprint = {
+        path = directoryPath,
+        fileCount = 0,
+        hashValue = ""
+    }
+    
+    -- Fast fingerprinting by using file count and file names
+    local fileNames = {}
+    local i = 0
+    local maxFilesToCheck = 50 -- Check limited sample for large directories
+    local sampleCount = 0
+    local totalFileSize = 0
+    
+    debug("Generating fingerprint for: " .. directoryPath)
+    
+    repeat
+        local fileName = reaper.EnumerateFiles(directoryPath, i)
+        if fileName and isAudioFile(fileName) then
+            fingerprint.fileCount = fingerprint.fileCount + 1
+            
+            -- Only sample some files for very large directories
+            if sampleCount < maxFilesToCheck then
+                table.insert(fileNames, fileName)
+                local filePath = directoryPath .. "\\" .. fileName
+                
+                -- Get file size if possible
+                local size = 0
+                local file = io.open(filePath, "rb")
+                if file then
+                    local current = file:seek()
+                    size = file:seek("end")
+                    file:seek("set", current)
+                    file:close()
+                    totalFileSize = totalFileSize + size
+                end
+                
+                sampleCount = sampleCount + 1
+            end
+        end
+        i = i + 1
+    until not fileName
+    
+    -- Sort the filenames to ensure consistent ordering
+    table.sort(fileNames)
+    
+    -- Create a hash value based on directory contents
+    local hashBase = ""
+    
+    -- For large directories, use a simplified hash based on count and sample
+    if fingerprint.fileCount > 300 then
+        -- Use first 10 and last 10 files (sorted) plus file count and total size
+        local sampleList = {}
+        for i = 1, math.min(10, #fileNames) do
+            table.insert(sampleList, fileNames[i])
         end
         
-        -- Add to total size (crude approximation)
-        fingerprint.totalSize = fingerprint.totalSize + 1
-      end
+        for i = math.max(1, #fileNames - 9), #fileNames do
+            table.insert(sampleList, fileNames[i])
+        end
+        
+        -- Create hash from sample files
+        for _, name in ipairs(sampleList) do
+            hashBase = hashBase .. name:sub(1, 15)
+        end
+        
+        fingerprint.hashValue = hashBase .. "#" .. fingerprint.fileCount .. ":" .. math.floor(totalFileSize / 1024)
+        debug("Large directory fingerprint created")
+    else
+        -- For smaller directories, use more files for better accuracy
+        for i, name in ipairs(fileNames) do
+            if i <= 30 then -- Use only up to 30 files for hash
+                hashBase = hashBase .. name
+            end
+        end
+        
+        -- Add total file count to ensure we capture additions/removals
+        fingerprint.hashValue = hashBase .. "#" .. fingerprint.fileCount
+        debug("Regular directory fingerprint created")
     end
-    i = i + 1
-  until not fileName
-  
-  -- Sort the filenames for consistent comparison
-  table.sort(fingerprint.fileNames)
-  
-  -- Create a hash of the filenames
-  local fileNamesHash = ""
-  for _, name in ipairs(fingerprint.fileNames) do
-    fileNamesHash = fileNamesHash .. name .. "|"
-  end
-  fingerprint.fileNamesHash = fileNamesHash
-  
-  return fingerprint
+    
+    return fingerprint
 end
 
 
@@ -1011,6 +1291,7 @@ initImGuiKeys()
       if reaper.ImGui_Button(ctx, "Help") then
         reaper.ShowMessageBox(
           "ReconTracks - Backing Track Manager v"..scriptVersion.." by Recontastic\n\n" ..
+          "* L= Lyrics tab, Q= Add to Queue, F= Favorites \n" ..
           "* Browse: Change your backing track folder\n" ..
           "* Browser Tab: View and select tracks\n" ..
           "* Queue Tab: Arrange tracks to play in sequence\n" ..
@@ -1173,33 +1454,39 @@ initImGuiKeys()
                 end
               end
               
+reaper.ImGui_SameLine(ctx)
+if reaper.ImGui_Button(ctx,"L")then
+    openLyricsEditor(song.path, song.name)
+end
               reaper.ImGui_PopID(ctx)
               
-              reaper.ImGui_TableNextColumn(ctx)
-  reaper.ImGui_PushID(ctx, "buttons" .. i)
-  
-  -- Add favorite toggle button
-  local heartIcon = isFavorite(song.path) and "-FAV" or "+fav"
-  if reaper.ImGui_Button(ctx, heartIcon) then
+             reaper.ImGui_TableNextColumn(ctx)
+reaper.ImGui_PushID(ctx, "buttons" .. i)
+
+local heartIcon = isFavorite(song.path) and "-F" or "+F"
+if reaper.ImGui_Button(ctx, heartIcon) then
     toggleFavorite(song.path)
-    -- No need to refresh the filtered songs here as we're just toggling a status
-  end
-  
-  reaper.ImGui_SameLine(ctx)
-  
-  if reaper.ImGui_Button(ctx, "Load") then
+end
+
+reaper.ImGui_SameLine(ctx)
+
+if reaper.ImGui_Button(ctx, "Load") then
     reaper.Undo_BeginBlock()
     loadSong(song.path, 0, false)
     reaper.Undo_EndBlock("Load track: " .. song.name, -1)
-  end
-  
-  reaper.ImGui_SameLine(ctx)
-  
-  if reaper.ImGui_Button(ctx, "+Queue") then
+end
+
+reaper.ImGui_SameLine(ctx)
+
+if reaper.ImGui_Button(ctx, "+Q") then
     table.insert(queue, song)
     saveQueue(queue)
-  end
-  reaper.ImGui_PopID(ctx)
+end
+reaper.ImGui_SameLine(ctx)
+
+local playCount = getSongPlayCount(song.path)
+reaper.ImGui_Text(ctx, "" .. playCount)
+reaper.ImGui_PopID(ctx)
             end
                       
             reaper.ImGui_EndTable(ctx)
@@ -1259,9 +1546,9 @@ initImGuiKeys()
           if reaper.ImGui_BeginTable(ctx, "QueueTable", 4, reaper.ImGui_TableFlags_Borders() + reaper.ImGui_TableFlags_RowBg() + reaper.ImGui_TableFlags_ScrollY(), 0, queueHeight) then
             -- Set up columns
             reaper.ImGui_TableSetupColumn(ctx, "Position", reaper.ImGui_TableColumnFlags_WidthFixed(), 60)
-            reaper.ImGui_TableSetupColumn(ctx, "Name", reaper.ImGui_TableColumnFlags_WidthStretch())
+            reaper.ImGui_TableSetupColumn(ctx, "Name", reaper.ImGui_TableColumnFlags_WidthStretch(), 120)
             reaper.ImGui_TableSetupColumn(ctx, "Duration", reaper.ImGui_TableColumnFlags_WidthFixed(), 80)
-            reaper.ImGui_TableSetupColumn(ctx, "Actions", reaper.ImGui_TableColumnFlags_WidthFixed(), 120)
+			reaper.ImGui_TableSetupColumn(ctx, "Actions", reaper.ImGui_TableColumnFlags_WidthFixed(), 200)
             reaper.ImGui_TableHeadersRow(ctx)
             
             -- Display queue items
@@ -1360,6 +1647,9 @@ initImGuiKeys()
         -- Open in default browser
         reaper.CF_ShellExecute(youtubeUrl)
       end
+	  
+		reaper.ImGui_SameLine(ctx)
+		reaper.ImGui_Text(ctx, ":" .. getSongPlayCount(lastLoadedSong.path))
       reaper.ImGui_Separator(ctx)
       -- Add a small space between the song info and footer text
       reaper.ImGui_Spacing(ctx)
@@ -1503,14 +1793,20 @@ function openRandomLoader()
   end
 end
 
+
+  function initPlayCounts()
+  loadSongPlayCounts()
+end
+
 -- Main function
 function main()
   -- Initialize log buffer
   logBuffer = {}
   debug("--- ReconTracks v"..scriptVersion.." Starting ---")
   debug("Disabled console popup by default - use the 'Show Console' button if needed")
-    -- Load genre information
+  initVolumeMemory()
   loadGenres()
+  initPlayCounts()
   -- Check if ImGui is available
   if not reaper.ImGui_CreateContext then
     reaper.ShowMessageBox("This script requires ReaImGui extension.\n\nPlease install it via ReaPack:\n1. Extensions > ReaPack > Browse packages\n2. Search for 'ReaImGui'\n3. Install and restart REAPER", "Missing Dependency", 0)

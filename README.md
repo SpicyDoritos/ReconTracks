@@ -2,7 +2,7 @@
 
 **ReconTracks**  is a REAPER Lua script designed to streamline loading, organizing, and playing backing tracks for practice or live streaming—all within one app for simplified monitoring and playback. Once installed Just point it to your backing track folder and away you go!
 
-> Current Version: 2.2  
+> Current Version: 2.4 
 > Author: Recontastic  
 > Requires: REAPER 6.8+ and [ReaImGui](https://github.com/cfillion/reaimgui) extension installed (via [ReaPack](https://reapack.com/))
 
@@ -33,13 +33,21 @@ ReconTracks brings backing tracks directly into REAPER, so you can balance guita
 - **UI Integration**: Tabbed interface with Song Browser and Queue View
 - **Search & Filter**: Quickly find tracks in your library
 - **Smart Behavior**: Remembers last loaded track and settings
-- **video quick search**: One-click button to search for the current loaded song's official video on YouTube
+- **Lyric/Chord/Note System**: Each song has its own text area that can be opened with the `L` button
+- **Playcount**: Keep track with how many times you have loaded a song with the Counter that automatically updates
+- **Video Quick Search**: One-click button to search for the current loaded song's official video on YouTube
+
+### 🎚️ Volume Memory System
+- **Per-Song Volume Settings**: Automatically remembers and restores volume levels for each song
+- **Seamless Transitions**: Helps to Maintain consistent db across different backing tracks
+- **Persistent Storage**: Saves volume data to `volume_memory.json` for retrieval across sessions
+- **Intelligent Retry Logic**: Ensures volume settings are properly applied even during complex operations
 
 ### 🏷️ Genre Tagging System
 - Uses naming format `Artist Name – Song Title` for consistent tagging with this system
 - Tag each track with a **Genre**
 - Automatically saves metadata to `song_genres.json`
-- the meta will include **song directory ** **Artist Name**, **Song Title**, and **Genre**
+- The meta will include **song directory**, **Artist Name**, **Song Title**, and **Genre**
 - Filter tracks by genre for random selection or setlists
 - Export metadata to CSV for other platforms
 
@@ -88,23 +96,25 @@ Convert your `song_genres.json` into a CSV for use with services like StreamerSo
 ## ⚙️ Installation
 
 1. Make sure REAPER has the [ReaImGui](https://github.com/cfillion/reaimgui) extension installed (via [ReaPack](https://reapack.com/))
-2. Copy `ReconTracks.lua`, `Recontracks-Playlist.lua` and `ReconTracks-RandomLoader.lua` into your REAPER Scripts folder
+2. Copy `ReconTracks.lua`, `Recontracks-Playlist.lua`, `ReconTracks-RandomLoader.lua`, and `ReconTracks-VolumeMemory.lua` into your REAPER Scripts folder
 3. In REAPER:
    - Open the Actions List (`?`)
    - Click "New Action" then "Load ReaScript" to import `ReconTracks.lua`
    - Assign shortcuts or add it to a toolbar for quick access
-   - **Note:** You don't need to import `Recontracks-Playlist.lua` or `ReconTracks-RandomLoader.lua` separately—it can be accessed via the **buttons** inside of ReconTracks
+   - **Note:** You don't need to import the companion scripts separately—they are automatically loaded by the main ReconTracks script
 4. (Optional) Edit the default folder path in the script if needed
 
 ---
-
 
 ## 🧠 Technical Notes
 
 - Written in Lua using REAPER's API and ReaImGui for UI
 - Stores state persistently via `SetExtState` / `GetExtState`
 - Genre data saved to: `C:\Users\<YourName>\AppData\Roaming\REAPER\Scripts\ReconTracks\song_genres.json`
+- Volume memory data saved to: `C:\Users\<YourName>\AppData\Roaming\REAPER\Scripts\ReconTracks\volume_memory.json`
 - Uses naming format `Artist Name – Song Title` for consistent tagging
+- Volume memory system includes intelligent retry logic to ensure proper application of volume settings
+- Debug mode available in volume memory module for troubleshooting
 
 ---
 
